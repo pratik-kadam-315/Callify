@@ -8,7 +8,8 @@ import Box from "@mui/material/Box";
 import Grid from "@mui/material/Grid";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
-import { Snackbar } from "@mui/material";
+import Snackbar from "@mui/material/Snackbar";
+import Alert from "@mui/material/Alert";
 import { AuthContext } from "../contexts/AuthContext";
 
 const defaultTheme = createTheme();
@@ -18,28 +19,42 @@ export default function Authentication() {
   const [password, setPassword] = React.useState("");
   const [name, setName] = React.useState("");
   const [message, setMessage] = React.useState("");
-  const [formState, setFormState] = React.useState(0);
+  const [severity, setSeverity] = React.useState("success"); // success | error
+  const [formState, setFormState] = React.useState(0); // 0 = login, 1 = register
   const [open, setOpen] = React.useState(false);
 
   const { handleRegister, handleLogin } = React.useContext(AuthContext);
 
   const handleAuth = async () => {
     try {
+      // LOGIN
       if (formState === 0) {
         await handleLogin(username, password);
+        setMessage("Login successful");
+        setSeverity("success");
+        setOpen(true);
       }
 
+      // REGISTER
       if (formState === 1) {
         const result = await handleRegister(name, username, password);
-        setMessage(result);
+        setMessage(result || "Registered successfully");
+        setSeverity("success");
         setOpen(true);
+
+        // reset form
         setFormState(0);
         setName("");
         setUsername("");
         setPassword("");
       }
     } catch (err) {
-      console.log(err);
+      const errorMessage =
+        err?.response?.data?.message || "Something went wrong";
+
+      setMessage(errorMessage);
+      setSeverity("error");
+      setOpen(true);
     }
   };
 
@@ -48,19 +63,22 @@ export default function Authentication() {
       <Grid container component="main" sx={{ height: "100vh" }}>
         <CssBaseline />
 
+        {/* LEFT IMAGE */}
         <Grid
           item
           xs={false}
           sm={4}
           md={7}
           sx={{
-            backgroundImage: "url(https://source.unsplash.com/random?wallpapers)",
+            backgroundImage:
+              "url(https://source.unsplash.com/random?technology)",
             backgroundRepeat: "no-repeat",
             backgroundSize: "cover",
             backgroundPosition: "center",
           }}
         />
 
+        {/* RIGHT FORM */}
         <Grid item xs={12} sm={8} md={5} component={Paper} elevation={6} square>
           <Box
             sx={{
@@ -75,6 +93,7 @@ export default function Authentication() {
               <LockOutlinedIcon />
             </Avatar>
 
+            {/* SWITCH BUTTONS */}
             <Box sx={{ mb: 2 }}>
               <Button
                 variant={formState === 0 ? "contained" : "outlined"}
@@ -91,6 +110,7 @@ export default function Authentication() {
               </Button>
             </Box>
 
+            {/* FORM */}
             <Box component="form" noValidate sx={{ mt: 1 }}>
               {formState === 1 && (
                 <TextField
@@ -135,7 +155,21 @@ export default function Authentication() {
         </Grid>
       </Grid>
 
-      <Snackbar open={open} autoHideDuration={4000} message={message} />
+      {/* SNACKBAR */}
+      <Snackbar
+        open={open}
+        autoHideDuration={4000}
+        onClose={() => setOpen(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setOpen(false)}
+          severity={severity}
+          sx={{ width: "100%" }}
+        >
+          {message}
+        </Alert>
+      </Snackbar>
     </ThemeProvider>
   );
 }
