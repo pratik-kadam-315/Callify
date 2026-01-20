@@ -1,0 +1,25 @@
+.container {
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.container--xs {
+  max-width: 444px;
+}
+
+.container--sm {
+  max-width: 600px;
+}
+
+.container--md {
+  max-width: 900px;
+}
+
+.container--lg {
+  max-width: 1200px;
+}
+
+.container--xl {
+  max-width: 1536px;
+}

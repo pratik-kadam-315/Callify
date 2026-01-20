@@ -1,24 +1,15 @@
-import React, { useContext, useEffect, useState } from 'react'
-import { AuthContext } from '../contexts/AuthContext'
+import React, { useContext, useEffect, useState } from 'react';
+import { AuthContext } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import Card from '@mui/material/Card';
-import Box from '@mui/material/Box';
-import CardActions from '@mui/material/CardActions';
-import CardContent from '@mui/material/CardContent';
-import Button from '@mui/material/Button';
-import Typography from '@mui/material/Typography';
-import HomeIcon from '@mui/icons-material/Home';
+import { Card, CardContent, Typography, Container, Grid, IconButton, Box, Chip } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import LinkIcon from '@mui/icons-material/Link';
 
-import { IconButton } from '@mui/material';
 export default function History() {
-
-
     const { getHistoryOfUser } = useContext(AuthContext);
-
-    const [meetings, setMeetings] = useState([])
-
-
-    const routeTo = useNavigate();
+    const [meetings, setMeetings] = useState([]);
+    const navigate = useNavigate();
 
     useEffect(() => {
         const fetchHistory = async () => {
@@ -26,63 +17,64 @@ export default function History() {
                 const history = await getHistoryOfUser();
                 setMeetings(history);
             } catch {
-                // IMPLEMENT SNACKBAR
+                // Ignore error
             }
         }
-
         fetchHistory();
     }, [])
 
     let formatDate = (dateString) => {
-
         const date = new Date(dateString);
-        const day = date.getDate().toString().padStart(2, "0");
-        const month = (date.getMonth() + 1).toString().padStart(2, "0")
-        const year = date.getFullYear();
-
-        return `${day}/${month}/${year}`
-
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
     }
 
     return (
-        <div>
+        <Container maxWidth="md" sx={{ py: 4 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+                <IconButton onClick={() => navigate("/home")} sx={{ mr: 2 }}>
+                    <ArrowBackIcon />
+                </IconButton>
+                <Typography variant="h4" fontWeight="bold">
+                    Meeting History
+                </Typography>
+            </Box>
 
-            <IconButton onClick={() => {
-                routeTo("/home")
-            }}>
-                <HomeIcon />
-            </IconButton >
-            {
-                (meetings.length !== 0) ? meetings.map((e, i) => {
-                    return (
-
-                        <>
-
-
-                            <Card key={i} variant="outlined">
-
-
+            {meetings.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 8, opacity: 0.6 }}>
+                    <CalendarTodayIcon sx={{ fontSize: 60, mb: 2 }} />
+                    <Typography variant="h6">No scheduled meetings yet</Typography>
+                    <Typography variant="body2">Join a meeting to see it here</Typography>
+                </Box>
+            ) : (
+                <Grid container spacing={3}>
+                    {meetings.map((e, i) => (
+                        <Grid item xs={12} sm={6} key={i}>
+                            <Card variant="outlined" sx={{ borderRadius: 3, transition: '0.3s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 4 } }}>
                                 <CardContent>
-                                    <Typography sx={{ fontSize: 14 }} color="text.secondary" gutterBottom>
-                                        Code: {e.meetingCode}
-                                    </Typography>
-
-                                    <Typography sx={{ mb: 1.5 }} color="text.secondary">
-                                        Date: {formatDate(e.date)}
-                                    </Typography>
-
+                                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                                        <Chip icon={<LinkIcon />} label="Meeting Code" color="primary" size="small" variant="outlined" sx={{ mr: 1 }} />
+                                        <Typography variant="h6" component="div">
+                                            {e.meetingCode}
+                                        </Typography>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', color: 'text.secondary' }}>
+                                        <CalendarTodayIcon fontSize="small" sx={{ mr: 1 }} />
+                                        <Typography variant="body2">
+                                            {formatDate(e.date)}
+                                        </Typography>
+                                    </Box>
                                 </CardContent>
-
-
                             </Card>
-
-
-                        </>
-                    )
-                }) : <></>
-
-            }
-
-        </div>
+                        </Grid>
+                    ))}
+                </Grid>
+            )}
+        </Container>
     )
 }

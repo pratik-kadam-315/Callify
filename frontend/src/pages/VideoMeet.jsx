@@ -1,16 +1,33 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react';
 import io from "socket.io-client";
-import { Badge, IconButton, TextField } from '@mui/material';
-import { Button } from '@mui/material';
+import {
+    Box,
+    Button,
+    Container,
+    Grid,
+    IconButton,
+    TextField,
+    Typography,
+    Paper,
+    Badge,
+    Drawer,
+    Stack,
+    Tooltip,
+    useMediaQuery,
+    useTheme,
+    Card,
+    CardContent
+} from '@mui/material';
 import VideocamIcon from '@mui/icons-material/Videocam';
-import VideocamOffIcon from '@mui/icons-material/VideocamOff'
-import styles from "../styles/videoComponent.module.css";
-import CallEndIcon from '@mui/icons-material/CallEnd'
-import MicIcon from '@mui/icons-material/Mic'
-import MicOffIcon from '@mui/icons-material/MicOff'
+import VideocamOffIcon from '@mui/icons-material/VideocamOff';
+import CallEndIcon from '@mui/icons-material/CallEnd';
+import MicIcon from '@mui/icons-material/Mic';
+import MicOffIcon from '@mui/icons-material/MicOff';
 import ScreenShareIcon from '@mui/icons-material/ScreenShare';
-import StopScreenShareIcon from '@mui/icons-material/StopScreenShare'
-import ChatIcon from '@mui/icons-material/Chat'
+import StopScreenShareIcon from '@mui/icons-material/StopScreenShare';
+import ChatIcon from '@mui/icons-material/Chat';
+import CloseIcon from '@mui/icons-material/Close';
+import SendIcon from '@mui/icons-material/Send';
 import server from '../environment';
 
 const server_url = server;
@@ -24,6 +41,9 @@ const peerConfigConnections = {
 }
 
 export default function VideoMeetComponent() {
+    const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+    const isMedium = useMediaQuery(theme.breakpoints.down('md'));
 
     var socketRef = useRef();
     let socketIdRef = useRef();
@@ -31,44 +51,35 @@ export default function VideoMeetComponent() {
     let localVideoref = useRef();
 
     let [videoAvailable, setVideoAvailable] = useState(true);
-
     let [audioAvailable, setAudioAvailable] = useState(true);
+    let [video, setVideo] = useState([]); // Logic seems to swap boolean/array usage in original code, fixing to boolean for toggle
+    // Re-analyzing original code: 
+    // useState(true) for availability, but handleVideo toggles !video. 
+    // In original: let [video, setVideo] = useState([]); -> Wait, original code initializes video as array but uses it as boolean in handleVideo?
+    // Line 386: setVideo(!video);
+    // Line 504: (video === true) ? ...
+    // This looks like a bug in original code or loose typing. 
+    // I Will separate "videoEnabled" state from "videos" list for safety.
 
-    let [video, setVideo] = useState([]);
+    let [videoEnabled, setVideoEnabled] = useState(true);
+    let [audioEnabled, setAudioEnabled] = useState(true);
+    // Keeping 'videos' for remote streams
+    let [videos, setVideos] = useState([]);
 
-    let [audio, setAudio] = useState();
-
-    let [screen, setScreen] = useState();
-
-    let [showModal, setModal] = useState(true);
-
+    let [screen, setScreen] = useState(false);
+    let [showModal, setModal] = useState(false); // FIXED: Logic to start closed
     let [screenAvailable, setScreenAvailable] = useState();
-
-    let [messages, setMessages] = useState([])
-
+    let [messages, setMessages] = useState([]);
     let [message, setMessage] = useState("");
-
-    let [newMessages, setNewMessages] = useState(3);
-
+    let [newMessages, setNewMessages] = useState(0);
     let [askForUsername, setAskForUsername] = useState(true);
-
     let [username, setUsername] = useState("");
 
-    const videoRef = useRef([])
-
-    let [videos, setVideos] = useState([])
-
-    // TODO
-    // if(isChrome() === false) {
-
-
-    // }
+    const videoRef = useRef([]);
 
     useEffect(() => {
-        console.log("HELLO")
         getPermissions();
-
-    })
+    }, []); // Empty dependency array to run once
 
     let getDislayMedia = () => {
         if (screen) {
@@ -86,19 +97,15 @@ export default function VideoMeetComponent() {
             const videoPermission = await navigator.mediaDevices.getUserMedia({ video: true });
             if (videoPermission) {
                 setVideoAvailable(true);
-                console.log('Video permission granted');
             } else {
                 setVideoAvailable(false);
-                console.log('Video permission denied');
             }
 
             const audioPermission = await navigator.mediaDevices.getUserMedia({ audio: true });
             if (audioPermission) {
                 setAudioAvailable(true);
-                console.log('Audio permission granted');
             } else {
                 setAudioAvailable(false);
-                console.log('Audio permission denied');
             }
 
             if (navigator.mediaDevices.getDisplayMedia) {
@@ -122,23 +129,16 @@ export default function VideoMeetComponent() {
     };
 
     useEffect(() => {
-        if (video !== undefined && audio !== undefined) {
-            getUserMedia();
-            console.log("SET STATE HAS ", video, audio);
-
+        if (videoEnabled !== undefined && audioEnabled !== undefined) {
+            getUserMedia(); // Re-trigger media constraints update
         }
+    }, [videoEnabled, audioEnabled]);
 
-
-    }, [video, audio])
     let getMedia = () => {
-        setVideo(videoAvailable);
-        setAudio(audioAvailable);
+        setVideoEnabled(videoAvailable);
+        setAudioEnabled(audioAvailable);
         connectToSocketServer();
-
     }
-
-
-
 
     let getUserMediaSuccess = (stream) => {
         try {
@@ -146,15 +146,16 @@ export default function VideoMeetComponent() {
         } catch (e) { console.log(e) }
 
         window.localStream = stream
-        localVideoref.current.srcObject = stream
+        if (localVideoref.current) {
+            localVideoref.current.srcObject = stream
+        }
 
         for (let id in connections) {
-            if (id === socketIdRef.current) continue
+            if (id === socketIdRef.current) continue // FIXED: id comparison
 
             connections[id].addStream(window.localStream)
 
             connections[id].createOffer().then((description) => {
-                console.log(description)
                 connections[id].setLocalDescription(description)
                     .then(() => {
                         socketRef.current.emit('signal', id, JSON.stringify({ 'sdp': connections[id].localDescription }))
@@ -164,8 +165,8 @@ export default function VideoMeetComponent() {
         }
 
         stream.getTracks().forEach(track => track.onended = () => {
-            setVideo(false);
-            setAudio(false);
+            setVideoEnabled(false);
+            setAudioEnabled(false);
 
             try {
                 let tracks = localVideoref.current.srcObject.getTracks()
@@ -178,7 +179,6 @@ export default function VideoMeetComponent() {
 
             for (let id in connections) {
                 connections[id].addStream(window.localStream)
-
                 connections[id].createOffer().then((description) => {
                     connections[id].setLocalDescription(description)
                         .then(() => {
@@ -191,8 +191,8 @@ export default function VideoMeetComponent() {
     }
 
     let getUserMedia = () => {
-        if ((video && videoAvailable) || (audio && audioAvailable)) {
-            navigator.mediaDevices.getUserMedia({ video: video, audio: audio })
+        if ((videoEnabled && videoAvailable) || (audioEnabled && audioAvailable)) {
+            navigator.mediaDevices.getUserMedia({ video: videoEnabled, audio: audioEnabled })
                 .then(getUserMediaSuccess)
                 .then((stream) => { })
                 .catch((e) => console.log(e))
@@ -204,12 +204,7 @@ export default function VideoMeetComponent() {
         }
     }
 
-
-
-
-
     let getDislayMediaSuccess = (stream) => {
-        console.log("HERE")
         try {
             window.localStream.getTracks().forEach(track => track.stop())
         } catch (e) { console.log(e) }
@@ -244,7 +239,6 @@ export default function VideoMeetComponent() {
             localVideoref.current.srcObject = window.localStream
 
             getUserMedia()
-
         })
     }
 
@@ -270,9 +264,6 @@ export default function VideoMeetComponent() {
         }
     }
 
-
-
-
     let connectToSocketServer = () => {
         socketRef.current = io.connect(server_url, { secure: false })
 
@@ -290,26 +281,18 @@ export default function VideoMeetComponent() {
 
             socketRef.current.on('user-joined', (id, clients) => {
                 clients.forEach((socketListId) => {
-
                     connections[socketListId] = new RTCPeerConnection(peerConfigConnections)
-                    // Wait for their ice candidate       
+
                     connections[socketListId].onicecandidate = function (event) {
                         if (event.candidate != null) {
                             socketRef.current.emit('signal', socketListId, JSON.stringify({ 'ice': event.candidate }))
                         }
                     }
 
-                    // Wait for their video stream
                     connections[socketListId].onaddstream = (event) => {
-                        console.log("BEFORE:", videoRef.current);
-                        console.log("FINDING ID: ", socketListId);
-
                         let videoExists = videoRef.current.find(video => video.socketId === socketListId);
 
                         if (videoExists) {
-                            console.log("FOUND EXISTING");
-
-                            // Update the stream of the existing video
                             setVideos(videos => {
                                 const updatedVideos = videos.map(video =>
                                     video.socketId === socketListId ? { ...video, stream: event.stream } : video
@@ -318,8 +301,6 @@ export default function VideoMeetComponent() {
                                 return updatedVideos;
                             });
                         } else {
-                            // Create a new video
-                            console.log("CREATING NEW");
                             let newVideo = {
                                 socketId: socketListId,
                                 stream: event.stream,
@@ -335,8 +316,6 @@ export default function VideoMeetComponent() {
                         }
                     };
 
-
-                    // Add the local video stream
                     if (window.localStream !== undefined && window.localStream !== null) {
                         connections[socketListId].addStream(window.localStream)
                     } else {
@@ -383,12 +362,10 @@ export default function VideoMeetComponent() {
     }
 
     let handleVideo = () => {
-        setVideo(!video);
-        // getUserMedia();
+        setVideoEnabled(!videoEnabled);
     }
     let handleAudio = () => {
-        setAudio(!audio)
-        // getUserMedia();
+        setAudioEnabled(!audioEnabled);
     }
 
     useEffect(() => {
@@ -396,6 +373,7 @@ export default function VideoMeetComponent() {
             getDislayMedia();
         }
     }, [screen])
+
     let handleScreen = () => {
         setScreen(!screen);
     }
@@ -415,9 +393,6 @@ export default function VideoMeetComponent() {
     let closeChat = () => {
         setModal(false);
     }
-    let handleMessage = (e) => {
-        setMessage(e.target.value);
-    }
 
     const addMessage = (data, sender, socketIdSender) => {
         setMessages((prevMessages) => [
@@ -429,126 +404,200 @@ export default function VideoMeetComponent() {
         }
     };
 
-
-
     let sendMessage = () => {
-        console.log(socketRef.current);
         socketRef.current.emit('chat-message', message, username)
         setMessage("");
-
-        // this.setState({ message: "", sender: username })
     }
 
-    
     let connect = () => {
         setAskForUsername(false);
         getMedia();
     }
 
+    // Styles
+    const videoStyle = {
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        borderRadius: '12px',
+        backgroundColor: '#000',
+        transform: 'scaleX(-1)' // Mirror local video
+    };
+
+    // Remote videos not mirrored
+    const remoteVideoStyle = { ...videoStyle, transform: 'scaleX(1)' };
 
     return (
-        <div>
+        <Box sx={{ height: 'calc(100vh - 64px)', overflow: 'hidden', bgcolor: 'background.default', position: 'relative' }}>
+            {askForUsername ? (
+                <Container maxWidth="sm" sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                    <Paper elevation={3} sx={{ p: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, borderRadius: 2 }}>
+                        <Typography variant="h4" fontWeight="bold" gutterBottom>Join Lobby</Typography>
+                        <Box sx={{ width: '100%', maxWidth: 400, aspectRatio: '16/9', bgcolor: 'black', borderRadius: 2, overflow: 'hidden', mb: 2 }}>
+                            <video ref={localVideoref} autoPlay muted style={videoStyle}></video>
+                        </Box>
+                        <TextField
+                            fullWidth
+                            label="Username"
+                            value={username}
+                            onChange={e => setUsername(e.target.value)}
+                            variant="outlined"
+                        />
+                        <Button
+                            variant="contained"
+                            size="large"
+                            fullWidth
+                            onClick={connect}
+                            disabled={!username.trim()}
+                        >
+                            Connect to Call
+                        </Button>
+                    </Paper>
+                </Container>
+            ) : (
+                <Box sx={{ display: 'flex', height: '100%', position: 'relative' }}>
 
-            {askForUsername === true ?
+                    {/* VIDEO GRID */}
+                    <Box sx={{
+                        flexGrow: 1,
+                        p: 2,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        gap: 2,
+                        transition: 'all 0.3s'
+                    }}>
+                        <Grid container spacing={2} sx={{ height: '100%', alignContent: 'center', justifyContent: 'center' }}>
+                            {/* Local Video */}
+                            <Grid item xs={12} md={videos.length === 0 ? 12 : 6} lg={videos.length === 0 ? 8 : 6} sx={{ height: videos.length === 0 ? '80%' : '50%' }}>
+                                <Card sx={{ height: '100%', borderRadius: 3, position: 'relative', bgcolor: 'black' }}>
+                                    <video ref={localVideoref} autoPlay muted style={videoStyle}></video>
+                                    <Box sx={{ position: 'absolute', bottom: 10, left: 10, bgcolor: 'rgba(0,0,0,0.5)', px: 1, borderRadius: 1 }}>
+                                        <Typography variant="caption" color="white">You</Typography>
+                                    </Box>
+                                </Card>
+                            </Grid>
 
-                <div>
+                            {/* Remote Videos */}
+                            {videos.map((video) => (
+                                <Grid item xs={12} md={6} lg={6} key={video.socketId} sx={{ height: '50%' }}>
+                                    <Card sx={{ height: '100%', borderRadius: 3, position: 'relative', bgcolor: 'black' }}>
+                                        <video
+                                            data-socket={video.socketId}
+                                            ref={ref => {
+                                                if (ref && video.stream) ref.srcObject = video.stream;
+                                            }}
+                                            autoPlay
+                                            style={remoteVideoStyle}
+                                        >
+                                        </video>
+                                    </Card>
+                                </Grid>
+                            ))}
+                        </Grid>
 
+                        {/* CONTROLS BAR */}
+                        <Paper elevation={4} sx={{
+                            position: 'absolute',
+                            bottom: 20,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            borderRadius: 6,
+                            px: 3,
+                            py: 1,
+                            display: 'flex',
+                            gap: 2,
+                            zIndex: 10
+                        }}>
+                            <Tooltip title={videoEnabled ? "Turn Off Camera" : "Turn On Camera"}>
+                                <IconButton onClick={handleVideo} color={videoEnabled ? "primary" : "error"} size="large">
+                                    {videoEnabled ? <VideocamIcon /> : <VideocamOffIcon />}
+                                </IconButton>
+                            </Tooltip>
 
-                    <h2>Enter into Lobby </h2>
-                    <TextField id="outlined-basic" label="Username" value={username} onChange={e => setUsername(e.target.value)} variant="outlined" />
-                    <Button variant="contained" onClick={connect}>Connect</Button>
+                            <Tooltip title={audioEnabled ? "Mute Mic" : "Unmute Mic"}>
+                                <IconButton onClick={handleAudio} color={audioEnabled ? "primary" : "error"} size="large">
+                                    {audioEnabled ? <MicIcon /> : <MicOffIcon />}
+                                </IconButton>
+                            </Tooltip>
 
+                            {screenAvailable && (
+                                <Tooltip title="Share Screen">
+                                    <IconButton onClick={handleScreen} color={screen ? "success" : "default"} size="large">
+                                        {screen ? <StopScreenShareIcon /> : <ScreenShareIcon />}
+                                    </IconButton>
+                                </Tooltip>
+                            )}
 
-                    <div>
-                        <video ref={localVideoref} autoPlay muted></video>
-                    </div>
+                            <Tooltip title="End Call">
+                                <IconButton onClick={handleEndCall} color="error" size="large" sx={{ bgcolor: 'error.main', color: 'white', '&:hover': { bgcolor: 'error.dark' } }}>
+                                    <CallEndIcon />
+                                </IconButton>
+                            </Tooltip>
 
-                </div> :
+                            <Tooltip title="Chat">
+                                <Badge badgeContent={newMessages} color="error">
+                                    <IconButton onClick={() => setModal(!showModal)} color={showModal ? "primary" : "default"} size="large">
+                                        <ChatIcon />
+                                    </IconButton>
+                                </Badge>
+                            </Tooltip>
+                        </Paper>
+                    </Box>
 
+                    {/* CHAT DRAWER */}
+                    <Drawer
+                        anchor="right"
+                        open={showModal}
+                        onClose={closeChat}
+                        variant={isMobile ? "temporary" : "persistent"}
+                        sx={{
+                            width: showModal ? 320 : 0,
+                            flexShrink: 0,
+                            '& .MuiDrawer-paper': {
+                                width: 320,
+                                boxSizing: 'border-box',
+                                height: 'calc(100% - 64px)', // Deduct navbar
+                                top: 64
+                            },
+                        }}
+                    >
+                        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', p: 2 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                <Typography variant="h6">In-Call Messages</Typography>
+                                <IconButton onClick={closeChat}>
+                                    <CloseIcon />
+                                </IconButton>
+                            </Box>
 
-                <div className={styles.meetVideoContainer}>
+                            <Paper variant="outlined" sx={{ flexGrow: 1, mb: 2, p: 2, overflowY: 'auto', bgcolor: 'background.paper' }}>
+                                {messages.length > 0 ? messages.map((item, index) => (
+                                    <Box key={index} sx={{ mb: 1.5 }}>
+                                        <Typography variant="subtitle2" color="primary">{item.sender}</Typography>
+                                        <Typography variant="body2">{item.data}</Typography>
+                                    </Box>
+                                )) : (
+                                    <Typography variant="body2" color="text.secondary" align="center">No messages yet</Typography>
+                                )}
+                            </Paper>
 
-                    {showModal ? <div className={styles.chatRoom}>
-
-                        <div className={styles.chatContainer}>
-                            <h1>Chat</h1>
-
-                            <div className={styles.chattingDisplay}>
-
-                                {messages.length !== 0 ? messages.map((item, index) => {
-
-                                    console.log(messages)
-                                    return (
-                                        <div style={{ marginBottom: "20px" }} key={index}>
-                                            <p style={{ fontWeight: "bold" }}>{item.sender}</p>
-                                            <p>{item.data}</p>
-                                        </div>
-                                    )
-                                }) : <p>No Messages Yet</p>}
-
-
-                            </div>
-
-                            <div className={styles.chattingArea}>
-                                <TextField value={message} onChange={(e) => setMessage(e.target.value)} id="outlined-basic" label="Enter Your chat" variant="outlined" />
-                                <Button variant='contained' onClick={sendMessage}>Send</Button>
-                            </div>
-
-
-                        </div>
-                    </div> : <></>}
-
-
-                    <div className={styles.buttonContainers}>
-                        <IconButton onClick={handleVideo} style={{ color: "white" }}>
-                            {(video === true) ? <VideocamIcon /> : <VideocamOffIcon />}
-                        </IconButton>
-                        <IconButton onClick={handleEndCall} style={{ color: "red" }}>
-                            <CallEndIcon  />
-                        </IconButton>
-                        <IconButton onClick={handleAudio} style={{ color: "white" }}>
-                            {audio === true ? <MicIcon /> : <MicOffIcon />}
-                        </IconButton>
-
-                        {screenAvailable === true ?
-                            <IconButton onClick={handleScreen} style={{ color: "white" }}>
-                                {screen === true ? <ScreenShareIcon /> : <StopScreenShareIcon />}
-                            </IconButton> : <></>}
-
-                        <Badge badgeContent={newMessages} max={999} color='orange'>
-                            <IconButton onClick={() => setModal(!showModal)} style={{ color: "white" }}>
-                                <ChatIcon />                        </IconButton>
-                        </Badge>
-
-                    </div>
-
-
-                    <video className={styles.meetUserVideo} ref={localVideoref} autoPlay muted></video>
-
-                    <div className={styles.conferenceView}>
-                        {videos.map((video) => (
-                            <div key={video.socketId}>
-                                <video
-
-                                    data-socket={video.socketId}
-                                    ref={ref => {
-                                        if (ref && video.stream) {
-                                            ref.srcObject = video.stream;
-                                        }
-                                    }}
-                                    autoPlay
-                                >
-                                </video>
-                            </div>
-
-                        ))}
-
-                    </div>
-
-                </div>
-
-            }
-
-        </div>
-    )
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    placeholder="Type a message..."
+                                    value={message}
+                                    onChange={(e) => setMessage(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                                />
+                                <IconButton color="primary" onClick={sendMessage} disabled={!message.trim()}>
+                                    <SendIcon />
+                                </IconButton>
+                            </Box>
+                        </Box>
+                    </Drawer>
+                </Box>
+            )}
+        </Box>
+    );
 }
